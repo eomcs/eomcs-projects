@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>게시글 조회</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .form-group {
+            margin: 15px 0;
+        }
+        
+        .form-row {
+            display: flex;
+            gap: 20px;
+        }
+        
+        .form-row .form-group {
+            flex: 1;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        
+        input[readonly] {
+            background-color: #f5f5f5;
+            color: #666;
+        }
+        
+        textarea {
+            resize: vertical;
+        }
+        
+        .error {
+            color: red;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        
+        .loading {
+            text-align: center;
+            color: #666;
+            margin: 20px 0;
+        }
+        
+        .error-message {
+            color: red;
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .buttons {
+            margin: 20px 0;
+        }
+        
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        
+        button.btn-danger {
+            background-color: #dc3545;
+        }
+        
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        
+        a {
+            color: #007bff;
+            text-decoration: none;
+            padding: 10px 20px;
+            border: 1px solid #007bff;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        
+        a:hover {
+            background-color: #007bff;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        
+        // 컴포넌트 외부에 정의된 순수 함수들
+        const getBoardNoFromUrl = () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('no');
+        };
+        
+        const formatDate = (dateString) => {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('ko-KR', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            });
+        };
+        
+        const validateBoardData = (formData) => {
+            const newErrors = {};
+            
+            // 제목 검사
+            const title = formData.title.trim();
+            if (!title) {
+                newErrors.title = '제목을 입력해주세요.';
+            } else if (title.length < 2 || title.length > 100) {
+                newErrors.title = '제목은 2자 이상 100자 이내로 입력해주세요.';
+            }
+            
+            // 내용 검사
+            const content = formData.content.trim();
+            if (!content) {
+                newErrors.content = '내용을 입력해주세요.';
+            } else if (content.length < 10 || content.length > 5000) {
+                newErrors.content = '내용은 10자 이상 5000자 이내로 입력해주세요.';
+            }
+            
+            return newErrors;
+        };
+        
+        const loadBoardData = async (boardNo) => {
+            const response = await axios.get(`http://localhost:9999/boards/${boardNo}`);
+            const jsonResult = response.data;
+            
+            if (jsonResult.status !== 'success') {
+                throw new Error('요청 처리 오류');
+            }
+            
+            return jsonResult.content;
+        };
+        
+        const updateBoardData = async (boardNo, boardData) => {
+            const response = await axios.patch(`http://localhost:9999/boards/${boardNo}`, {
+                title: boardData.title,
+                content: boardData.content
+            }, {
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            return response.data;
+        };
+        
+        const deleteBoardData = async (boardNo) => {
+            const response = await axios.delete(`http://localhost:9999/boards/${boardNo}`);
+            const jsonResult = response.data;
+            
+            if (jsonResult.status !== 'success') {
+                throw new Error('요청 처리 오류');
+            }
+            
+            return jsonResult;
+        };
+        
+        // BoardView 컴포넌트
+        const BoardView = () => {
+            const [board, setBoard] = useState(null);
+            const [formData, setFormData] = useState({
+                title: '',
+                content: ''
+            });
+            const [errors, setErrors] = useState({});
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+            const [updating, setUpdating] = useState(false);
+            
+            // 게시글 로드
+            const loadBoard = async () => {
+                const boardNo = getBoardNoFromUrl();
+                
+                if (!boardNo) {
+                    setLoading(false);
+                    setError('게시글 번호가 필요합니다.');
+                    return;
+                }
+                
+                try {
+                    setLoading(true);
+                    setError(null);
+                    
+                    const boardData = await loadBoardData(boardNo);
+                    
+                    setBoard(boardData);
+                    setFormData({
+                        title: boardData.title,
+                        content: boardData.content
+                    });
+                } catch (err) {
+                    console.error('게시글 로드 오류:', err);
+                    
+                    let errorMessage = '게시글을 찾을 수 없습니다.';
+                    if (err.response && err.response.status === 404) {
+                        errorMessage = '게시글을 찾을 수 없습니다.';
+                    } else if (err.response && err.response.data && err.response.data.message) {
+                        errorMessage = err.response.data.message;
+                    }
+                    
+                    setError(errorMessage);
+                } finally {
+                    setLoading(false);
+                }
+            };
+            
+            // 컴포넌트 마운트 시 게시글 로드
+            useEffect(() => {
+                loadBoard();
+            }, []);
+            
+            // 입력값 변경 핸들러
+            const handleInputChange = (e) => {
+                const { name, value } = e.target;
+                setFormData(prev => ({
+                    ...prev,
+                    [name]: value
+                }));
+                
+                // 에러 메시지 초기화
+                if (errors[name]) {
+                    setErrors(prev => ({
+                        ...prev,
+                        [name]: ''
+                    }));
+                }
+            };
+            
+            // 폼 유효성 검사
+            const validateForm = () => {
+                const newErrors = validateBoardData(formData);
+                setErrors(newErrors);
+                return Object.keys(newErrors).length === 0;
+            };
+            
+            // 게시글 수정
+            const updateBoard = async () => {
+                try {
+                    setUpdating(true);
+                    
+                    await updateBoardData(board.no, formData);
+                    
+                    alert('게시글이 수정되었습니다.');
+                    // 페이지 새로고침하여 최신 데이터 표시
+                    window.location.reload();
+                } catch (error) {
+                    console.error('게시글 수정 오류:', error);
+                    
+                    let errorMessage = '수정에 실패했습니다.';
+                    if (error.response && error.response.data && error.response.data.message) {
+                        errorMessage = error.response.data.message;
+                    }
+                    
+                    alert(errorMessage);
+                } finally {
+                    setUpdating(false);
+                }
+            };
+            
+            // 게시글 삭제
+            const deleteBoard = async () => {
+                if (!confirm('정말로 이 게시글을 삭제하시겠습니까?')) {
+                    return;
+                }
+                
+                try {
+                    await deleteBoardData(board.no);
+                    window.location.href = '/board';
+                } catch (error) {
+                    console.error('게시글 삭제 오류:', error);
+                    
+                    let errorMessage = '삭제에 실패했습니다.';
+                    if (error.response && error.response.data && error.response.data.message) {
+                        errorMessage = error.response.data.message;
+                    }
+                    
+                    alert(errorMessage);
+                }
+            };
+            
+            // 폼 제출 핸들러
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                
+                if (validateForm()) {
+                    updateBoard();
+                }
+            };
+            
+            if (loading) {
+                return (
+                    <div className="container">
+                        <h1>게시글 조회</h1>
+                        <div className="loading">
+                            게시글을 불러오는 중...
+                        </div>
+                    </div>
+                );
+            }
+            
+            if (error) {
+                return (
+                    <div className="container">
+                        <h1>게시글 조회</h1>
+                        <div className="error-message">
+                            {error}
+                        </div>
+                        <div className="buttons">
+                            <a href="/board">목록으로</a>
+                        </div>
+                    </div>
+                );
+            }
+            
+            return (
+                <div className="container">
+                    <h1>게시글 조회</h1>
+                    
+                    <form onSubmit={handleSubmit}>
+                        <div className="form-group">
+                            <label htmlFor="no">번호:</label>
+                            <input 
+                                type="text" 
+                                id="no" 
+                                name="no" 
+                                value={board.no}
+                                readOnly 
+                            />
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="title">제목:</label>
+                            <input 
+                                type="text" 
+                                id="title" 
+                                name="title" 
+                                value={formData.title}
+                                onChange={handleInputChange}
+                                required 
+                            />
+                            {errors.title && <div className="error">{errors.title}</div>}
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="content">내용:</label>
+                            <textarea 
+                                id="content" 
+                                name="content" 
+                                rows="6" 
+                                value={formData.content}
+                                onChange={handleInputChange}
+                                required
+                            />
+                            {errors.content && <div className="error">{errors.content}</div>}
+                        </div>
+
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label htmlFor="created-date">작성일:</label>
+                                <input 
+                                    type="text" 
+                                    id="created-date" 
+                                    value={formatDate(board.createdDate)}
+                                    readOnly 
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label htmlFor="view-count">조회수:</label>
+                                <input 
+                                    type="text" 
+                                    id="view-count" 
+                                    value={board.viewCount}
+                                    readOnly 
+                                />
+                            </div>
+                        </div>
+
+                        <div className="buttons">
+                            <button type="submit" disabled={updating}>
+                                {updating ? '수정 중...' : '변경'}
+                            </button>
+                            <button type="button" className="btn-danger" onClick={deleteBoard}>
+                                삭제
+                            </button>
+                            <a href="/board">목록으로</a>
+                        </div>
+                    </form>
+                </div>
+            );
+        };
+
+        // App 컴포넌트 렌더링
+        const container = document.getElementById('root');
+        const root = ReactDOM.createRoot(container);
+        root.render(<BoardView />);
+
+    </script>
+</body>
+</html>
