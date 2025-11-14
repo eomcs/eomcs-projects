@@ -401,7 +401,7 @@ Thymeleaf를 사용하여 HTML 템플릿을 렌더링 하는 방법도 배웁니
   @PostMapping("/update")
   public String update(@ModelAttribute Board board) {
     Board old = boardService.getBoardByNo(board.getNo());
-    if (board == null) {
+    if (old == null) {
       return "redirect:/board/list"; // 게시글이 없으면 목록 페이지로 리다이렉트
     }
 
